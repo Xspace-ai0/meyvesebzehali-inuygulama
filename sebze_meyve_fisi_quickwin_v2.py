@@ -29,10 +29,12 @@ class Customer:
     address: str = ''
 
     def to_dict(self) -> dict:
+      """Return a dictionary representation of the customer."""
         return {'name': self.name, 'phone': self.phone, 'address': self.address}
 
     @classmethod
     def from_dict(cls, data: dict) -> "Customer":
+      """Create a Customer instance from a dictionary."""
         return cls(
             name=data.get('name', ''),
             phone=data.get('phone', ''),
@@ -42,14 +44,17 @@ class Customer:
 
 
 def _normalize_for_comparison(name: str) -> str:
+  """Normalize a name for case-insensitive comparisons."""
     # Unicode normalize, strip extra spaces, casefold for comparison (handles Turkish case more robustly)
     name = unicodedata.normalize("NFKC", name)
     name = " ".join(name.strip().split())
     return name.casefold()
 
 def _format_for_display(name: str) -> str:
+    """Return a display-friendly title-cased name."""
     # Title-case with minimal Turkish-specific handling for initial i
     def turkish_title(word: str) -> str:
+      """Title-case a single word with Turkish-specific handling."""
         w = word.strip().lower()
         if w.startswith("i"):
             return "İ" + w[1:]
@@ -58,6 +63,7 @@ def _format_for_display(name: str) -> str:
 
 
 def _find_customer_by_name(customers, name: str):
+   """Search for a customer by name using normalized and fuzzy matching."""
     if not name:
         return None
     key = _normalize_for_comparison(name)
@@ -72,6 +78,7 @@ def _find_customer_by_name(customers, name: str):
 
 
 def load_customers() -> list[Customer]:
+  """Load customers from disk, returning a list of Customer objects."""
     if CUSTOMER_FILE.exists():
         try:
             with CUSTOMER_FILE.open('r', encoding='utf-8') as f:
@@ -83,6 +90,7 @@ def load_customers() -> list[Customer]:
     return []
 
 def save_customers(customers: list[Customer]) -> None:
+  """Persist the list of customers to disk."""
     try:
         with CUSTOMER_FILE.open('w', encoding='utf-8') as f:
             json.dump([c.to_dict() for c in customers], f, ensure_ascii=False, indent=2)
@@ -90,12 +98,14 @@ def save_customers(customers: list[Customer]) -> None:
         logging.exception('save_customers failed')
 
 class ReceiptApp:
+    """Main application window for generating receipts."""
     ROLE_VAT_MAP = {
         'Pazarcı Esnafı': 0.02,
         'Hal İçi / Ortacı': 0.01
     }
 
     def __init__(self, master):
+      """Initialize the GUI components and load initial data."""
         self.master = master
         master.title('Sebze-Meyve Fiş Uygulaması (Sade)')
 
@@ -208,17 +218,20 @@ class ReceiptApp:
         self._on_category_changed()
 
     def _refresh_listbox(self):
+       """Populate the listbox with customers sorted alphabetically."""
         self.listbox.delete(0, tk.END)
         for c in sorted(self.customers, key=lambda c: c.name.lower()):
             self.listbox.insert(tk.END, c.name)
 
     def _on_listbox_select(self, event):
+          """Insert the selected customer name into the entry field."""
         sel = self.listbox.curselection()
         if sel:
             name = self.listbox.get(sel[0])
             self.customer_name_var.set(name)
 
     def _add_new_customer(self):
+        """Add a new customer to the list and save it."""
         raw = self.new_customer_var.get()
         normalized = _normalize_for_comparison(raw)
         if not normalized:
@@ -235,6 +248,7 @@ class ReceiptApp:
         self._refresh_listbox()
 
     def _remove_selected_customer(self):
+       """Delete the selected customer after confirmation."""
         sel = self.listbox.curselection()
         if not sel:
             messagebox.showinfo('Uyarı', 'Silmek için bir müşteri seçin.')
@@ -248,6 +262,7 @@ class ReceiptApp:
                 self.customer_name_var.set('')
 
     def _on_name_typing(self, event):
+        """Filter the customer list based on typed characters."""
         typed_raw = self.customer_name_var.get()
         norm_typed = _normalize_for_comparison(typed_raw)
         matches = set()
@@ -268,6 +283,7 @@ class ReceiptApp:
             self._refresh_listbox()
 
     def _on_mousewheel(self, event):
+         """Scroll the listbox using mouse wheel events."""
         try:
             if event.delta:
                 direction = -1 if event.delta > 0 else 1
@@ -279,6 +295,7 @@ class ReceiptApp:
                 self.listbox.yview_scroll(1, 'units')
 
     def _on_category_changed(self, event=None):
+         """Adjust subitem options when the category selection changes."""
         cat = self.category_var.get()
         if cat == 'MEYVE':
             self.subitem_combobox.configure(values=self.fruits, state='readonly')
@@ -289,9 +306,11 @@ class ReceiptApp:
         self._apply_subitem_to_item()
 
     def _on_subitem_selected(self, event=None):
+      """Handle selection of a predefined subitem."""
         self._apply_subitem_to_item()
 
     def _apply_subitem_to_item(self):
+              """Update the item type based on current subitem value."""
         val = self.subitem_var.get()
         if val == 'DİĞER':
             custom = simpledialog.askstring('Diğer Alt Cinsi', 'Alt cinsi giriniz:')
@@ -302,6 +321,7 @@ class ReceiptApp:
 
     
     def _parse_number(self, value: str) -> float:
+      """Convert a localized string to a float value."""
         if not value:
             return 0.0
         try:
@@ -310,6 +330,7 @@ class ReceiptApp:
             return 0.0
 
     def calculate_total(self) -> None:
+         """Recalculate the total price including VAT."""
         try:
             weight = self._parse_number(self.weight_var.get())
             price = self._parse_number(self.price_per_kg_var.get())
@@ -321,6 +342,7 @@ class ReceiptApp:
             logging.exception('calculate_total failed')
 
     def _generate_receipt_text(self, customer, item_type, piece_count, weight, price, vat_rate):
+      """Create the plain text content of the receipt."""
         net_total = weight * price
         vat_amount = net_total * vat_rate
         total_with_vat = net_total + vat_amount
@@ -339,6 +361,7 @@ class ReceiptApp:
         )
 
     def _print_to_printer(self, file_path):
+      """Send the file to the system print queue."""
         printed = False
         if platform.system() == 'Windows':
             try:
@@ -355,6 +378,7 @@ class ReceiptApp:
         return printed
 
     def clear_form(self):
+       """Reset all form fields to their defaults."""
         self.customer_name_var.set('')
         self.item_type_var.set('')
         self.piece_count_var.set('')
@@ -372,6 +396,7 @@ class ReceiptApp:
 
     
     def _write_receipt_atomic(self, path: Path, content: str) -> None:
+      """Atomically write receipt content to a file."""
         tmp = path.with_suffix('.tmp')
         try:
             tmp.write_text(content, encoding='utf-8')
@@ -381,6 +406,7 @@ class ReceiptApp:
             raise
 
     def _do_print(self, file_path: pathlib.Path):
+      """Print the given file using platform-specific commands."""
         try:
             if platform.system() == 'Windows':
                 os.startfile(str(file_path), 'print')
@@ -390,6 +416,7 @@ class ReceiptApp:
             logging.exception("Printing failed")
 
     def _clear_form_after_print(self):
+       """Clear specific fields after successful printing."""
         self.piece_count_var.set('')
         self.weight_var.set('')
         self.price_per_kg_var.set('')
@@ -397,6 +424,7 @@ class ReceiptApp:
 
     
     def print_receipt(self):
+         """Validate input, save the receipt, and send it to the printer."""
         try:
             # Kısa vadeli validasyonlar
             customer_name = self.customer_name_var.get().strip()
@@ -461,6 +489,7 @@ class ReceiptApp:
 
 
 def main():
+     """Start the receipt application."""
     root = tk.Tk()
     ReceiptApp(root)
     root.mainloop()
